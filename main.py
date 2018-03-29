@@ -1,14 +1,18 @@
-import requests, re
+import requests, re, configparser
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
+
+
+config = configparser.ConfigParser()
+config.read('info.ini')
 
 headers = {
     'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36'
 }
 
 user_data = {
-    'IPT_LOGINUSERNAME': '1505040309',
-    'IPT_LOGINPASSWORD': '040034'
+    'IPT_LOGINUSERNAME': config['Information']['username'],
+    'IPT_LOGINPASSWORD': config['Information']['password']
 }
 
 
@@ -35,22 +39,29 @@ params = {
 }
 
 rr = session.get(url, params=params).text
-# 此处需要遍历树节点保证全部下载
+# 此处需要遍历全部树节点保证全部下载
 
 # 测试代码
 
-basic_url = 'http://learn.upc.edu.cn/meol/common/script/listview.jsp?acttype=enter&folderid=179548&lid=18700'
-download_urls = []
-ht = session.get(basic_url).text
-source_download_url = 'http://learn.upc.edu.cn/meol/common/script/download.jsp?'
+resource_page_url = ''    # 资源页
+resource_page = session.get(resource_page_url).text
 
-download_soup = BeautifulSoup(ht, 'html.parser')
+source_download_preview_url = 'http://learn.upc.edu.cn/meol/common/script/'
+source_url = 'http://learn.upc.edu.cn'
+
+# 代码过于耦合 待优化
+download_soup = BeautifulSoup(resource_page, 'html.parser')
 download_pages = download_soup.find_all(href=re.compile('preview/download_preview.jsp?'))
 for download_page in download_pages:
-    nurl = download_page['href']
-    file_name = download_page.text
-    param = urlparse(nurl).query
-    download_url = source_download_url + param
+    download_preview_page = source_download_preview_url + download_page['href']
+    download_preview_html = session.get(download_preview_page).text
+    download_preview_page_soup = BeautifulSoup(download_preview_html, 'html.parser')
+    h2_tag = download_preview_page_soup.find('h2')
+    if h2_tag.p.a == None:    # 存在无法下载的文件 跳过循环
+        continue
+    download_url = source_url + h2_tag.p.a['href']
+    file_name = h2_tag.find('span').text
     data = session.get(download_url, headers=headers)
-    with open(file_name, 'wb') as f:
+    with open('download/' + file_name, 'wb') as f:
         f.write(data.content)
+    print('\"' + file_name + '\"' + ' 下载完成！')    # 人性化提示
